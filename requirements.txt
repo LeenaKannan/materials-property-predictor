@@ -6,8 +6,8 @@ streamlit==1.28.1
 # Machine learning dependencies
 torch==2.1.0
 scikit-learn==1.3.2
-numpy==1.24.3
-pandas==2.0.3
+numpy
+pandas
 
 # Materials science dependencies
 matminer==0.9.0
