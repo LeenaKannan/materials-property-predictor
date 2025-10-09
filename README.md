@@ -62,15 +62,10 @@ pip install -r requirements.txt
 4. **Configure environment:**
 ```bash
 cp .env.example .env
-# Edit .env and add your Materials Project API key (optional)
+# Edit .env and add your Materials Project API key
 ```
 
 ### Training Models
-
-Train models with synthetic data (quick start):
-```bash
-python train_model.py --property band_gap
-```
 
 Train with real Materials Project data:
 ```bash
@@ -178,23 +173,6 @@ result = service.predict("SiO2", include_uncertainty=True)
 print(result)
 ```
 
-## Testing
-
-Run all tests:
-```bash
-pytest tests/ -v
-```
-
-Run specific test file:
-```bash
-pytest tests/test_composition_parser.py -v
-```
-
-Run with coverage:
-```bash
-pytest tests/ --cov=backend --cov-report=html
-```
-
 ## Model Performance
 
 The ANN model is benchmarked against Random Forest and XGBoost baselines:
@@ -206,12 +184,6 @@ The ANN model is benchmarked against Random Forest and XGBoost baselines:
 | XGBoost | Good | Good | Good |
 
 *Actual metrics depend on training data quality and quantity*
-
-## API Documentation
-
-Interactive API documentation is available at:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
 
 ## Project Structure
 
@@ -247,23 +219,6 @@ API_PORT=8000
 MODEL_PATH=./models
 ```
 
-## Development
-
-**Code formatting:**
-```bash
-black backend/ frontend/ tests/
-```
-
-**Linting:**
-```bash
-flake8 backend/ frontend/ tests/
-```
-
-**Type checking:**
-```bash
-mypy backend/
-```
-
 ## Deployment
 
 ### Docker Production Deployment
@@ -277,13 +232,6 @@ docker build -t materials-predictor:latest --target production .
 ```bash
 docker-compose -f docker-compose.yml up -d
 ```
-
-### Cloud Deployment
-
-The application can be deployed to:
-- **AWS**: ECS/EKS with RDS and ElastiCache
-- **Google Cloud**: Cloud Run with Cloud SQL and Memorystore
-- **Azure**: Container Instances with Cosmos DB and Redis Cache
 
 ## Contributing
 
@@ -308,8 +256,6 @@ This project is licensed under the MIT License.
 
 For issues, questions, or contributions:
 - Open an issue on GitHub
-- Check the documentation at `/docs`
-- Review the design document for architecture details
 
 ## Roadmap
 
@@ -324,4 +270,4 @@ For issues, questions, or contributions:
 
 ---
 
-**Built with ❤️ for materials science research**
+**Built with ❤️ for Deep Learning**
