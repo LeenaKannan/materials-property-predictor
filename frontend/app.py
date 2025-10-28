@@ -80,18 +80,19 @@ if not available_properties:
 # Success message
 st.success(f"✅ **Connected to API** | {len(available_properties)} model(s) loaded")
 
-if 'formula' not in st.session_state:
-    st.session_state.formula = ""
-
 # Main input section
 st.markdown("---")
 st.subheader("🧪 Make a Prediction")
 
 col1, col2 = st.columns([2, 1])
 
+if 'formula' not in st.session_state:
+    st.session_state.formula = ""
+
 with col1:
     formula = st.text_input(
-        "Chemical Formula",
+        "Chemical Formula", 
+        key ="formula",
         placeholder="e.g., Si, TiO2, CuFeO2, La0.5Sr0.5MnO3",
         help="Enter a valid chemical formula. Examples: Si, TiO2, BaTiO3, La0.5Sr0.5MnO3"
     )
