@@ -2,6 +2,11 @@ import subprocess
 import sys
 import time
 import os
+from pathlib import Path
+
+# Add project root to Python path
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
 
 # Check models directory exists
 if not os.path.exists("models"):
@@ -18,13 +23,15 @@ if not model_files:
 
 print("Starting services...")
 
-# Start API
-api = subprocess.Popen([sys.executable, "backend/api/main.py"])
+# Start API with PYTHONPATH set
+env = os.environ.copy()
+env['PYTHONPATH'] = str(project_root)
+api = subprocess.Popen([sys.executable, "backend/api/main.py"], env=env)
 print("✓ API starting...")
 time.sleep(3)
 
 # Start Streamlit
-ui = subprocess.Popen([sys.executable, "-m", "streamlit", "run", "app.py"])
+ui = subprocess.Popen([sys.executable, "-m", "streamlit", "run", "frontend/app.py"])
 print("✓ UI starting...")
 
 print("📍 Web Interface: http://localhost:8501")
