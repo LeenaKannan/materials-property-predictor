@@ -43,23 +43,27 @@ materials-property-predictor/
 ### Installation
 
 1. **Clone the repository:**
+
 ```bash
 git clone <repository-url>
 cd materials-property-predictor
 ```
 
 2. **Create virtual environment:**
+
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
 3. **Install dependencies:**
+
 ```bash
 pip install -r requirements.txt
 ```
 
 4. **Configure environment:**
+
 ```bash
 cp .env.example .env
 # Edit .env and add your Materials Project API key
@@ -68,11 +72,13 @@ cp .env.example .env
 ### Training Models
 
 Train with real Materials Project data:
+
 ```bash
 python train_model.py --property band_gap --real-data
 ```
 
 Available properties:
+
 - `band_gap` - Electronic band gap (eV)
 - `formation_energy` - Formation energy (eV/atom)
 - `density` - Material density (g/cm³)
@@ -82,16 +88,20 @@ Available properties:
 #### Option 1: Local Development
 
 1. **Start the API server:**
+
 ```bash
 python backend/api/main.py
 ```
-The API will be available at http://localhost:8000
+
+The API will be available at <http://localhost:8000>
 
 2. **Start the web interface** (in another terminal):
+
 ```bash
 streamlit run frontend/app.py
 ```
-The web app will be available at http://localhost:8501
+
+The web app will be available at <http://localhost:8501>
 
 #### Option 2: Docker Compose
 
@@ -100,15 +110,16 @@ docker-compose up -d
 ```
 
 Services:
-- API: http://localhost:8000
-- Web Interface: http://localhost:8501
+
+- API: <http://localhost:8000>
+- Web Interface: <http://localhost:8501>
 - Redis: localhost:6379
 
 ## Usage
 
 ### Web Interface
 
-1. Navigate to http://localhost:8501
+1. Navigate to <http://localhost:8501>
 2. Enter a chemical formula (e.g., "SiO2", "Fe2O3")
 3. Select property to predict
 4. View predictions with uncertainty and feature importance
@@ -116,6 +127,7 @@ Services:
 ### API Usage
 
 **Predict single property:**
+
 ```bash
 curl -X POST "http://localhost:8000/api/v1/predict" \
   -H "Content-Type: application/json" \
@@ -128,6 +140,7 @@ curl -X POST "http://localhost:8000/api/v1/predict" \
 ```
 
 **Batch predictions:**
+
 ```bash
 curl -X POST "http://localhost:8000/api/v1/batch-predict" \
   -H "Content-Type: application/json" \
@@ -138,6 +151,7 @@ curl -X POST "http://localhost:8000/api/v1/batch-predict" \
 ```
 
 **Health check:**
+
 ```bash
 curl http://localhost:8000/api/v1/health
 ```
@@ -188,15 +202,18 @@ The ANN model is benchmarked against Random Forest and XGBoost baselines:
 ## Project Structure
 
 **Backend Components:**
+
 - `processors/`: Data processing pipeline (parsing, feature engineering, preprocessing)
 - `models/`: ML model implementations (ANN, Random Forest, XGBoost)
 - `services/`: Business logic (prediction, explainability)
 - `api/`: FastAPI routes and request/response models
 
 **Frontend:**
+
 - `frontend/app.py`: Streamlit web interface with visualizations
 
 **Training:**
+
 - `train_model.py`: End-to-end training pipeline
 
 ## Configuration
@@ -224,11 +241,13 @@ MODEL_PATH=./models
 ### Docker Production Deployment
 
 1. **Build production image:**
+
 ```bash
 docker build -t materials-predictor:latest --target production .
 ```
 
 2. **Deploy with Docker Compose:**
+
 ```bash
 docker-compose -f docker-compose.yml up -d
 ```
@@ -255,6 +274,7 @@ This project is licensed under the MIT License.
 ## Support
 
 For issues, questions, or contributions:
+
 - Open an issue on GitHub
 
 ## Roadmap
@@ -270,4 +290,4 @@ For issues, questions, or contributions:
 
 ---
 
-**Built with ❤️ for Deep Learning**
+**Built with ❤️ for materials science research**
