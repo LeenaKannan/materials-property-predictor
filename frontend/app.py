@@ -80,6 +80,9 @@ if not available_properties:
 # Success message
 st.success(f"✅ **Connected to API** | {len(available_properties)} model(s) loaded")
 
+if 'formula' not in st.session_state:
+    st.session_state.formula = ""
+
 # Main input section
 st.markdown("---")
 st.subheader("🧪 Make a Prediction")
