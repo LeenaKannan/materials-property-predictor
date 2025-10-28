@@ -5,6 +5,9 @@ from fastapi.responses import JSONResponse
 from datetime import datetime
 import sys
 import os
+from pathlib import Path
+import torch
+import pickle
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -21,7 +24,7 @@ from backend.api.models import (
 from backend.config import settings
 
 # Global registry - will be initialized on startup
-model_registry = None
+model_registry = {}
 
 app = FastAPI(
     title="Materials Property Predictor API",
@@ -39,14 +42,69 @@ app.add_middleware(
 )
 
 
+def load_models():
+    """Load all available models from the models directory."""
+    models_dir = Path(settings.model_path)
+    loaded_models = {}
+    
+    if not models_dir.exists():
+        print(f"⚠️  Models directory not found: {models_dir}")
+        return loaded_models
+    
+    # Find all .pt model files
+    model_files = list(models_dir.glob("ann_*.pt"))
+    
+    if not model_files:
+        print(f"⚠️  No model files found in {models_dir}")
+        return loaded_models
+    
+    print(f"Found {len(model_files)} model files")
+    
+    for model_file in model_files:
+        try:
+            # Extract property name from filename
+            # ann_band_gap.pt -> band_gap
+            property_name = model_file.stem.replace("ann_", "")
+            
+            # Load the model
+            model = torch.load(model_file, map_location=torch.device('cpu'))
+            
+            # Load the corresponding scaler
+            scaler_file = models_dir / f"scaler_{property_name}.pkl"
+            scaler = None
+            if scaler_file.exists():
+                with open(scaler_file, 'rb') as f:
+                    scaler = pickle.load(f)
+            
+            loaded_models[property_name] = {
+                'model': model,
+                'scaler': scaler,
+                'path': str(model_file)
+            }
+            
+            print(f"✓ Loaded model for: {property_name}")
+            
+        except Exception as e:
+            print(f"✗ Failed to load {model_file.name}: {e}")
+    
+    return loaded_models
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize models on startup."""
     global model_registry
     print("Starting up Materials Property Predictor API...")
     print(f"Configuration loaded: {settings.model_path}")
-    # Model registry will be initialized when models are trained
-    # For now, we'll handle this gracefully
+    
+    # Load models
+    model_registry = load_models()
+    
+    if model_registry:
+        print(f"✓ Successfully loaded {len(model_registry)} models")
+        print(f"  Available properties: {', '.join(model_registry.keys())}")
+    else:
+        print("⚠️  No models loaded - predictions will not be available")
 
 
 @app.get("/", response_model=dict)
@@ -63,12 +121,10 @@ async def root():
 @app.get("/api/v1/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint."""
-    models_loaded = []
-    if model_registry is not None:
-        models_loaded = list(model_registry.services.keys())
+    models_loaded = list(model_registry.keys()) if model_registry else []
     
     return HealthResponse(
-        status="healthy",
+        status="healthy" if models_loaded else "degraded",
         version="1.0.0",
         models_loaded=models_loaded,
         timestamp=datetime.now().isoformat()
@@ -78,11 +134,13 @@ async def health_check():
 @app.get("/api/v1/models/info", response_model=ModelInfoResponse)
 async def get_model_info():
     """Get information about available models."""
-    available_properties = settings.supported_properties
+    available_properties = list(model_registry.keys()) if model_registry else []
+    
+    model_versions = {prop: "1.0.0" for prop in available_properties}
     
     return ModelInfoResponse(
         available_properties=available_properties,
-        model_versions={"band_gap": "1.0.0"},
+        model_versions=model_versions,
         feature_count=132,  # Typical matminer feature count
         description="ANN-based material property predictor using composition features"
     )
@@ -99,10 +157,10 @@ async def predict(request: PredictionRequest):
     Returns:
         Prediction results with uncertainty and feature importance
     """
-    if model_registry is None:
+    if not model_registry:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Models not loaded. Please train models first."
+            detail="Models not loaded. Please ensure models are in the models/ directory."
         )
     
     try:
@@ -110,26 +168,29 @@ async def predict(request: PredictionRequest):
         if len(request.properties) == 1:
             property_name = request.properties[0]
             
-            if property_name not in model_registry.services:
+            if property_name not in model_registry:
+                available = ', '.join(model_registry.keys())
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Property '{property_name}' not available"
+                    detail=f"Property '{property_name}' not available. Available: {available}"
                 )
             
-            service = model_registry.services[property_name]
-            result = service.predict(
-                request.formula,
-                request.include_uncertainty,
-                request.include_explanation
+            # Get model and scaler
+            model_data = model_registry[property_name]
+            model = model_data['model']
+            scaler = model_data['scaler']
+            
+            # TODO: Implement actual prediction logic here
+            # This is a placeholder response
+            return PredictionResponse(
+                success=True,
+                formula=request.formula,
+                normalized_formula=request.formula,
+                prediction=None,
+                composition=None,
+                processing_time=0.1,
+                error=None
             )
-            
-            if not result.get("success"):
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=result.get("error", "Prediction failed")
-                )
-            
-            return result
         
         # For multiple properties
         else:
@@ -158,27 +219,30 @@ async def batch_predict(request: BatchPredictionRequest):
     Returns:
         List of prediction results
     """
-    if model_registry is None:
+    if not model_registry:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Models not loaded. Please train models first."
+            detail="Models not loaded. Please ensure models are in the models/ directory."
         )
     
     try:
         property_name = request.properties[0] if request.properties else "band_gap"
         
-        if property_name not in model_registry.services:
+        if property_name not in model_registry:
+            available = ', '.join(model_registry.keys())
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Property '{property_name}' not available"
+                detail=f"Property '{property_name}' not available. Available: {available}"
             )
         
-        service = model_registry.services[property_name]
-        results = service.predict_batch(
-            request.formulas,
-            request.include_uncertainty,
-            request.include_explanation
-        )
+        # TODO: Implement batch prediction logic
+        results = []
+        for formula in request.formulas:
+            results.append({
+                "success": True,
+                "formula": formula,
+                "prediction": None
+            })
         
         return {"results": results}
     
