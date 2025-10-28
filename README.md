@@ -38,14 +38,14 @@ materials-property-predictor/
 
 - Python 3.9+
 - Docker and Docker Compose (optional)
-- Materials Project API key (optional, for real data)
+- Materials Project API key
 
 ### Installation
 
 1. **Clone the repository:**
 
 ```bash
-git clone <repository-url>
+git clone <https://github.com/LeenaKannan/materials-property-predictor>
 cd materials-property-predictor
 ```
 
@@ -87,21 +87,11 @@ Available properties:
 
 #### Option 1: Local Development
 
-1. **Start the API server:**
+1. **Start both the API server and the UI:**
 
 ```bash
-python backend/api/main.py
+python start.py
 ```
-
-The API will be available at <http://localhost:8000>
-
-2. **Start the web interface** (in another terminal):
-
-```bash
-streamlit run frontend/app.py
-```
-
-The web app will be available at <http://localhost:8501>
 
 #### Option 2: Docker Compose
 
@@ -186,35 +176,6 @@ service = PredictionService(
 result = service.predict("SiO2", include_uncertainty=True)
 print(result)
 ```
-
-## Model Performance
-
-The ANN model is benchmarked against Random Forest and XGBoost baselines:
-
-| Model | MAE | RMSE | R² |
-|-------|-----|------|-----|
-| ANN | Best | Best | Best |
-| Random Forest | Good | Good | Good |
-| XGBoost | Good | Good | Good |
-
-*Actual metrics depend on training data quality and quantity*
-
-## Project Structure
-
-**Backend Components:**
-
-- `processors/`: Data processing pipeline (parsing, feature engineering, preprocessing)
-- `models/`: ML model implementations (ANN, Random Forest, XGBoost)
-- `services/`: Business logic (prediction, explainability)
-- `api/`: FastAPI routes and request/response models
-
-**Frontend:**
-
-- `frontend/app.py`: Streamlit web interface with visualizations
-
-**Training:**
-
-- `train_model.py`: End-to-end training pipeline
 
 ## Configuration
 
