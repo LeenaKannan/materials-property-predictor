@@ -1,19 +1,16 @@
-"""Streamlit web interface for Materials Property Predictor."""
+"""
+Streamlit UI for Materials Property Predictor
+Connects to FastAPI backend for predictions
+"""
 import streamlit as st
 import requests
-import plotly.graph_objects as go
-import plotly.express as px
+import json
 import pandas as pd
-from typing import Dict, List
-import sys
-import os
 
-# Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Configuration
+API_URL = "http://localhost:8000"
 
-from backend.processors.composition_parser import get_example_formulas, CompositionParser
-
-# Page configuration
+# Page config
 st.set_page_config(
     page_title="Materials Property Predictor",
     page_icon="🔬",
@@ -21,313 +18,249 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# API endpoint
-API_URL = os.getenv("API_URL", "http://localhost:8000")
+# Custom CSS
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 3rem;
+        font-weight: bold;
+        color: #1f77b4;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+    .sub-header {
+        text-align: center;
+        color: #666;
+        margin-bottom: 2rem;
+    }
+    .metric-card {
+        background-color: #f0f2f6;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        text-align: center;
+    }
+</style>
+""", unsafe_allow_html=True)
 
+# Title
+st.markdown('<div class="main-header">🔬 Materials Property Predictor</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">AI-powered prediction of material properties using trained neural networks</div>', unsafe_allow_html=True)
 
-def main():
-    """Main application."""
-    st.title("🔬 Materials Property Predictor")
-    st.markdown("""
-    Predict material properties from chemical composition using Artificial Neural Networks.
-    Enter a chemical formula to get predictions with uncertainty estimates and feature importance explanations.
+# Check API health
+def check_api():
+    try:
+        response = requests.get(f"{API_URL}/health", timeout=3)
+        return response.json()
+    except:
+        return None
+
+api_status = check_api()
+
+if api_status is None:
+    st.error("❌ **API Server Not Running**")
+    st.info("""
+    **How to start the server:**
+    
+    1. Open a terminal in your project root directory
+    2. Run: `python start.py`
+    
+    Or manually:
+    - Terminal 1: `python api.py`
+    - Terminal 2: `streamlit run frontend/app.py`
     """)
-    
-    # Sidebar
-    with st.sidebar:
-        st.header("⚙️ Settings")
-        
-        property_name = st.selectbox(
-            "Property to Predict",
-            ["band_gap", "formation_energy", "density"],
-            help="Select the material property to predict"
-        )
-        
-        include_uncertainty = st.checkbox(
-            "Include Uncertainty",
-            value=True,
-            help="Show prediction confidence intervals"
-        )
-        
-        include_explanation = st.checkbox(
-            "Include Feature Importance",
-            value=True,
-            help="Show which features influence the prediction"
-        )
-        
-        st.markdown("---")
-        st.markdown("### 📚 Example Formulas")
-        examples = get_example_formulas()
-        for ex in examples[:5]:
-            if st.button(ex, key=f"ex_{ex}"):
-                st.session_state.formula_input = ex
-    
-    # Main content
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        # Input form
-        st.subheader("📝 Enter Chemical Formula")
-        
-        formula = st.text_input(
-            "Chemical Formula",
-            value=st.session_state.get("formula_input", ""),
-            placeholder="e.g., SiO2, Fe2O3, CaTiO3",
-            help="Enter a valid chemical formula using element symbols and subscripts"
-        )
-        
-        # Validation feedback
-        if formula:
-            is_valid, error_msg = CompositionParser.validate_formula(formula)
-            if not is_valid:
-                st.error(f"❌ {error_msg}")
-            else:
-                st.success("✅ Valid formula")
-        
-        predict_button = st.button("🚀 Predict Properties", type="primary", disabled=not formula)
-    
-    with col2:
-        st.subheader("ℹ️ About")
-        st.info("""
-        This tool uses machine learning to predict material properties based on chemical composition.
-        
-        **Supported Properties:**
-        - Band Gap (eV)
-        - Formation Energy (eV/atom)
-        - Density (g/cm³)
-        
-        **Features:**
-        - Neural network predictions
-        - Uncertainty quantification
-        - Feature importance analysis
-        """)
-    
-    # Make prediction
-    if predict_button and formula:
-        make_prediction(
-            formula,
-            property_name,
-            include_uncertainty,
-            include_explanation
-        )
+    st.stop()
 
+available_properties = api_status.get("models", [])
 
-def make_prediction(
-    formula: str,
-    property_name: str,
-    include_uncertainty: bool,
-    include_explanation: bool
-):
-    """Make prediction and display results."""
-    with st.spinner("🔄 Making prediction..."):
-        try:
-            # Call API
-            response = requests.post(
-                f"{API_URL}/api/v1/predict",
-                json={
-                    "formula": formula,
-                    "properties": [property_name],
-                    "include_uncertainty": include_uncertainty,
-                    "include_explanation": include_explanation
-                },
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                display_results(result, include_uncertainty, include_explanation)
-            else:
-                error_data = response.json()
-                st.error(f"❌ Prediction failed: {error_data.get('detail', 'Unknown error')}")
-        
-        except requests.exceptions.ConnectionError:
-            st.error("❌ Cannot connect to API. Make sure the backend is running.")
-            st.info("Start the backend with: `python backend/api/main.py`")
-        except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
+if not available_properties:
+    st.warning("⚠️ **API is running but no models are loaded**")
+    st.info("Please ensure your `models/` folder contains trained model files (`.pt`) and their corresponding scalers (`.pkl`)")
+    st.stop()
 
+# Success message
+st.success(f"✅ **Connected to API** | {len(available_properties)} model(s) loaded")
 
-def display_results(
-    result: Dict,
-    include_uncertainty: bool,
-    include_explanation: bool
-):
-    """Display prediction results."""
-    st.success("✅ Prediction completed!")
-    
-    # Main prediction
-    st.subheader("🎯 Prediction Results")
-    
-    prediction = result.get("prediction", {})
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric(
-            label=f"{prediction['property_name'].replace('_', ' ').title()}",
-            value=f"{prediction['value']:.3f} {prediction['units']}"
-        )
-    
-    with col2:
-        if include_uncertainty and prediction.get("uncertainty"):
-            st.metric(
-                label="Uncertainty (±)",
-                value=f"{prediction['uncertainty']:.3f} {prediction['units']}"
-            )
-    
-    with col3:
-        st.metric(
-            label="Processing Time",
-            value=f"{result.get('processing_time', 0):.3f} s"
-        )
-    
-    # Confidence interval
-    if include_uncertainty and prediction.get("confidence_interval"):
-        st.markdown("**95% Confidence Interval:**")
-        ci = prediction["confidence_interval"]
-        st.markdown(f"`{ci[0]:.3f}` to `{ci[1]:.3f}` {prediction['units']}")
-    
-    # Composition
-    st.markdown("---")
-    st.subheader("🧪 Composition")
-    
-    composition = result.get("composition", {})
-    if composition:
-        comp_df = pd.DataFrame([
-            {"Element": elem, "Fraction": frac}
-            for elem, frac in composition.items()
-        ])
-        
-        fig = px.pie(
-            comp_df,
-            values="Fraction",
-            names="Element",
-            title="Elemental Composition"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # Feature importance
-    if include_explanation and result.get("feature_importance"):
-        st.markdown("---")
-        st.subheader("📊 Feature Importance")
-        st.markdown("*Features that most influence this prediction:*")
-        
-        display_feature_importance(result["feature_importance"])
+# Main input section
+st.markdown("---")
+st.subheader("🧪 Make a Prediction")
 
+col1, col2 = st.columns([2, 1])
 
-def display_feature_importance(feature_importance: List[Dict]):
-    """Display feature importance visualization."""
-    # Create dataframe
-    df = pd.DataFrame(feature_importance)
+with col1:
+    formula = st.text_input(
+        "Chemical Formula",
+        placeholder="e.g., Si, TiO2, CuFeO2, La0.5Sr0.5MnO3",
+        help="Enter a valid chemical formula. Examples: Si, TiO2, BaTiO3, La0.5Sr0.5MnO3"
+    )
+
+with col2:
+    # Create a nice display name for properties
+    property_display = {prop: prop.replace("_", " ").title() for prop in available_properties}
     
-    # Bar chart
-    fig = go.Figure()
-    
-    colors = ['#FF6B6B' if val < 0 else '#4ECDC4' 
-              for val in df.get('shap_value', df['importance_score'])]
-    
-    fig.add_trace(go.Bar(
-        y=df['feature_name'],
-        x=df.get('shap_value', df['importance_score']),
-        orientation='h',
-        marker=dict(color=colors),
-        text=df.get('shap_value', df['importance_score']).round(3),
-        textposition='auto'
-    ))
-    
-    fig.update_layout(
-        title="Top Features by Importance",
-        xaxis_title="SHAP Value / Importance Score",
-        yaxis_title="Feature",
-        height=400,
-        showlegend=False
+    selected_display = st.selectbox(
+        "Property to Predict",
+        options=list(property_display.values()),
+        help="Select the material property you want to predict"
     )
     
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # Table with descriptions
-    st.markdown("**Feature Details:**")
-    display_df = df[['feature_name', 'importance_score']].copy()
-    
-    if 'description' in df.columns:
-        display_df['description'] = df['description']
-    
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    # Get the actual property name
+    property_name = [k for k, v in property_display.items() if v == selected_display][0]
 
+# Predict button
+predict_col1, predict_col2, predict_col3 = st.columns([2, 1, 2])
+with predict_col2:
+    predict_button = st.button("🔮 Predict", type="primary", use_container_width=True)
 
-def show_batch_prediction():
-    """Show batch prediction interface."""
-    st.subheader("📦 Batch Prediction")
-    
-    formulas_text = st.text_area(
-        "Enter formulas (one per line)",
-        height=150,
-        placeholder="SiO2\nFe2O3\nCaTiO3"
-    )
-    
-    if st.button("Predict All"):
-        formulas = [f.strip() for f in formulas_text.split('\n') if f.strip()]
-        
-        if not formulas:
-            st.warning("Please enter at least one formula")
-            return
-        
-        with st.spinner(f"Processing {len(formulas)} formulas..."):
+if predict_button:
+    if not formula.strip():
+        st.error("⚠️ Please enter a chemical formula")
+    else:
+        with st.spinner("🔄 Making prediction..."):
             try:
+                # Make prediction request
                 response = requests.post(
-                    f"{API_URL}/api/v1/batch-predict",
-                    json={
-                        "formulas": formulas,
-                        "properties": ["band_gap"],
-                        "include_uncertainty": False,
-                        "include_explanation": False
-                    },
-                    timeout=60
+                    f"{API_URL}/predict",
+                    json={"formula": formula.strip(), "property": property_name},
+                    timeout=15
                 )
                 
                 if response.status_code == 200:
-                    results = response.json()["results"]
-                    display_batch_results(results)
+                    result = response.json()
+                    
+                    st.markdown("---")
+                    st.success("✅ **Prediction Successful!**")
+                    
+                    # Main metrics
+                    st.subheader("📊 Results")
+                    metric_col1, metric_col2, metric_col3 = st.columns(3)
+                    
+                    with metric_col1:
+                        st.metric(
+                            label="Predicted Value",
+                            value=f"{result['value']:.6f}",
+                            help="The predicted value for the selected property"
+                        )
+                    
+                    with metric_col2:
+                        st.metric(
+                            label="Uncertainty (±)",
+                            value=f"{result['uncertainty']:.6f}",
+                            help="Model uncertainty (standard deviation)"
+                        )
+                    
+                    with metric_col3:
+                        ci = result['confidence_interval']
+                        st.metric(
+                            label="95% Confidence Interval",
+                            value=f"[{ci[0]:.4f}, {ci[1]:.4f}]",
+                            help="95% confidence interval for the prediction"
+                        )
+                    
+                    # Composition breakdown
+                    st.subheader("🧬 Composition Analysis")
+                    comp_data = result.get('composition', {})
+                    
+                    if comp_data:
+                        # Create DataFrame for better visualization
+                        comp_df = pd.DataFrame([
+                            {"Element": elem, "Fraction": f"{frac:.4f}", "Percentage": f"{frac*100:.2f}%"}
+                            for elem, frac in comp_data.items()
+                        ])
+                        
+                        col_left, col_right = st.columns([1, 1])
+                        
+                        with col_left:
+                            st.dataframe(comp_df, use_container_width=True, hide_index=True)
+                        
+                        with col_right:
+                            # Bar chart
+                            st.bar_chart(pd.DataFrame({
+                                "Element": list(comp_data.keys()),
+                                "Fraction": list(comp_data.values())
+                            }).set_index("Element"))
+                    
+                    # Additional details
+                    with st.expander("🔍 View Detailed Response"):
+                        st.json(result)
+                    
+                    # Download results
+                    st.download_button(
+                        label="📥 Download Results (JSON)",
+                        data=json.dumps(result, indent=2),
+                        file_name=f"prediction_{formula}_{property_name}.json",
+                        mime="application/json"
+                    )
+                    
                 else:
-                    st.error(f"Batch prediction failed: {response.json()}")
-            
+                    error_detail = response.json().get('detail', 'Unknown error occurred')
+                    st.error(f"❌ **Prediction Failed:** {error_detail}")
+                    
+            except requests.exceptions.Timeout:
+                st.error("⏱️ **Request Timed Out** - The server took too long to respond. Please try again.")
+            except requests.exceptions.ConnectionError:
+                st.error("🔌 **Connection Error** - Could not connect to the API server.")
             except Exception as e:
-                st.error(f"Error: {str(e)}")
+                st.error(f"❌ **Error:** {str(e)}")
 
-
-def display_batch_results(results: List[Dict]):
-    """Display batch prediction results."""
-    # Create summary dataframe
-    data = []
-    for result in results:
-        if result.get("success"):
-            pred = result["prediction"]
-            data.append({
-                "Formula": result["formula"],
-                "Property": pred["property_name"],
-                "Value": pred["value"],
-                "Units": pred["units"]
-            })
-        else:
-            data.append({
-                "Formula": result["formula"],
-                "Property": "Error",
-                "Value": None,
-                "Units": result.get("error", "Unknown")
-            })
+# Sidebar
+with st.sidebar:
+    st.header("📚 Available Models")
+    st.markdown("The following properties can be predicted:")
     
-    df = pd.DataFrame(data)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    for prop in sorted(available_properties):
+        display_name = prop.replace("_", " ").title()
+        st.markdown(f"- **{display_name}** (`{prop}`)")
     
-    # Download button
-    csv = df.to_csv(index=False)
-    st.download_button(
-        label="📥 Download Results (CSV)",
-        data=csv,
-        file_name="predictions.csv",
-        mime="text/csv"
-    )
+    st.divider()
+    
+    st.header("💡 Example Formulas")
+    st.markdown("Click to use these examples:")
+    
+    examples = {
+        "Silicon": "Si",
+        "Titanium Dioxide": "TiO2",
+        "Copper Iron Oxide": "CuFeO2",
+        "Lanthanum Strontium Manganite": "La0.5Sr0.5MnO3",
+        "Barium Titanate": "BaTiO3",
+        "Iron Oxide": "Fe2O3",
+        "Aluminum Oxide": "Al2O3",
+        "Gallium Nitride": "GaN"
+    }
+    
+    for name, formula in examples.items():
+        if st.button(f"{name} ({formula})", use_container_width=True, key=f"ex_{formula}"):
+            st.session_state.formula = formula
+            st.rerun()
+    
+    st.divider()
+    
+    st.header("ℹ️ About")
+    st.markdown("""
+    This application uses trained artificial neural networks (ANNs) to predict 
+    material properties from chemical formulas.
+    
+    **Features:**
+    - Multiple property predictions
+    - Uncertainty quantification
+    - Composition analysis
+    - Easy-to-use interface
+    
+    """)
+    
+    st.divider()
+    
+    # API status
+    st.header("🔧 System Status")
+    if api_status:
+        st.success("✅ API: Running")
+        st.info(f"📊 Models: {len(available_properties)}")
+    
+    with st.expander("View API Info"):
+        st.json(api_status)
 
-
-if __name__ == "__main__":
-    main()
+# Footer
+st.markdown("---")
+st.markdown(
+    '<div style="text-align: center; color: #666;">Made with ❤️ using Streamlit and FastAPI</div>',
+    unsafe_allow_html=True
+)
