@@ -19,7 +19,7 @@ if not model_files:
 print("Starting services...")
 
 # Start API
-api = subprocess.Popen([sys.executable, "api.py"])
+api = subprocess.Popen([sys.executable, "backend/api/main.py"])
 print("✓ API starting...")
 time.sleep(3)
 
