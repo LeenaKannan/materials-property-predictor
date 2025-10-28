@@ -1,6 +1,6 @@
 """Pydantic models for API requests and responses."""
 from pydantic import BaseModel, Field, validator
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict, Tuple, Any
 from backend.processors.composition_parser import CompositionParser
 
 
@@ -110,7 +110,7 @@ class PredictionResponse(BaseModel):
 class MultiPropertyResponse(BaseModel):
     """Response model for multiple property predictions."""
     formula: str
-    predictions: Dict[str, any]
+    predictions: Dict[str, Any]
 
 
 class HealthResponse(BaseModel):
