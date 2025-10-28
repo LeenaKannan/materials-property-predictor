@@ -49,7 +49,7 @@ st.markdown('<div class="sub-header">AI-powered prediction of material propertie
 # Check API health
 def check_api():
     try:
-        response = requests.get(f"{API_URL}/health", timeout=3)
+        response = requests.get(f"{API_URL}/api/v1/health", timeout=3)
         return response.json()
     except:
         return None
@@ -70,7 +70,7 @@ if api_status is None:
     """)
     st.stop()
 
-available_properties = api_status.get("models", [])
+available_properties = api_status.get("models_loaded", [])
 
 if not available_properties:
     st.warning("⚠️ **API is running but no models are loaded**")
@@ -119,7 +119,7 @@ if predict_button:
             try:
                 # Make prediction request
                 response = requests.post(
-                    f"{API_URL}/predict",
+                    f"{API_URL}/api/v1/predict",
                     json={"formula": formula.strip(), "property": property_name},
                     timeout=15
                 )
