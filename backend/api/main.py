@@ -7,7 +7,9 @@ import sys
 import os
 from pathlib import Path
 import torch
+import torch.nn as nn
 import pickle
+import joblib
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,6 +24,80 @@ from backend.api.models import (
     ErrorResponse
 )
 from backend.config import settings
+
+
+# Model architectures
+class ResidualBlock(nn.Module):
+    """Residual block with skip connections"""
+    def __init__(self, hidden_size, dropout=0.3):
+        super().__init__()
+        self.fc1 = nn.Linear(hidden_size, hidden_size)
+        self.bn1 = nn.BatchNorm1d(hidden_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+        self.bn2 = nn.BatchNorm1d(hidden_size)
+        self.dropout = nn.Dropout(dropout)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        identity = x
+        out = self.fc1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+        out = self.dropout(out)
+        out = self.fc2(out)
+        out = self.bn2(out)
+        out = out + identity
+        out = self.relu(out)
+        return out
+
+
+class ResNetPredictor(nn.Module):
+    """ResNet for complex materials properties"""
+    def __init__(self, input_size, hidden_size=256, num_blocks=4, dropout=0.3):
+        super().__init__()
+        self.input_layer = nn.Linear(input_size, hidden_size)
+        self.bn_input = nn.BatchNorm1d(hidden_size)
+        self.relu = nn.ReLU()
+        self.blocks = nn.ModuleList([
+            ResidualBlock(hidden_size, dropout)
+            for _ in range(num_blocks)
+        ])
+        self.fc_reduce = nn.Linear(hidden_size, hidden_size // 2)
+        self.bn_reduce = nn.BatchNorm1d(hidden_size // 2)
+        self.output_layer = nn.Linear(hidden_size // 2, 1)
+
+    def forward(self, x):
+        x = self.input_layer(x)
+        x = self.bn_input(x)
+        x = self.relu(x)
+        for block in self.blocks:
+            x = block(x)
+        x = self.fc_reduce(x)
+        x = self.bn_reduce(x)
+        x = self.relu(x)
+        x = self.output_layer(x)
+        return x
+
+
+class VanillaANN(nn.Module):
+    """Standard feedforward network"""
+    def __init__(self, input_size, hidden_layers, dropout_rates, use_batchnorm=True):
+        super().__init__()
+        layers = []
+        prev_size = input_size
+        for hidden_size, dropout in zip(hidden_layers, dropout_rates):
+            layers.extend([
+                nn.Linear(prev_size, hidden_size),
+                nn.ReLU(),
+                nn.BatchNorm1d(hidden_size) if use_batchnorm else nn.Identity(),
+                nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+            ])
+            prev_size = hidden_size
+        layers.append(nn.Linear(prev_size, 1))
+        self.network = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self.network(x)
 
 # Global registry - will be initialized on startup
 model_registry = {}
@@ -66,26 +142,87 @@ def load_models():
             # ann_band_gap.pt -> band_gap
             property_name = model_file.stem.replace("ann_", "")
             
-            # Load the model
-            model = torch.load(model_file, map_location=torch.device('cpu'))
+            # Load the checkpoint (contains state_dict, config, metrics)
+            checkpoint = torch.load(model_file, map_location=torch.device('cpu'), weights_only=False)
+            
+            # Reconstruct the model based on architecture type
+            if isinstance(checkpoint, dict) and 'architecture_type' in checkpoint:
+                input_size = checkpoint['input_size']
+                config = checkpoint['config']
+                arch_type = checkpoint['architecture_type']
+                
+                if arch_type == 'resnet':
+                    # Get ResNet-specific parameters
+                    hidden_size = config.get('hidden_size', 256)
+                    num_blocks = config.get('num_blocks', 4)
+                    dropout = config.get('dropout', 0.3)
+                    
+                    model = ResNetPredictor(
+                        input_size=input_size,
+                        hidden_size=hidden_size,
+                        num_blocks=num_blocks,
+                        dropout=dropout
+                    )
+                else:  # vanilla
+                    hidden_layers = config.get('hidden_layers', [256, 128, 64])
+                    dropout_rates = config.get('dropout_rates', [0.3, 0.3, 0.3])
+                    
+                    # Ensure dropout_rates matches hidden_layers length
+                    if len(dropout_rates) < len(hidden_layers):
+                        dropout_rates = dropout_rates + [dropout_rates[-1]] * (len(hidden_layers) - len(dropout_rates))
+                    
+                    model = VanillaANN(
+                        input_size=input_size,
+                        hidden_layers=hidden_layers,
+                        dropout_rates=dropout_rates,
+                        use_batchnorm=True
+                    )
+                
+                # Load the state dict
+                model.load_state_dict(checkpoint['model_state_dict'])
+                model.eval()  # Set to evaluation mode
+                
+                metrics = checkpoint.get('metrics', {})
+            else:
+                # Old format or just state_dict
+                print(f"⚠️  Warning: {model_file.name} uses old format, skipping")
+                continue
             
             # Load the corresponding scaler
             scaler_file = models_dir / f"scaler_{property_name}.pkl"
             scaler = None
             if scaler_file.exists():
-                with open(scaler_file, 'rb') as f:
-                    scaler = pickle.load(f)
+                try:
+                    # Try joblib first
+                    scaler = joblib.load(scaler_file)
+                except Exception as joblib_error:
+                    try:
+                        # Fallback to pickle
+                        with open(scaler_file, 'rb') as f:
+                            scaler = pickle.load(f)
+                    except Exception as pickle_error:
+                        print(f"  ⚠️  Could not load scaler for {property_name}")
+                        print(f"     Joblib error: {joblib_error}")
+                        print(f"     Pickle error: {pickle_error}")
+                        scaler = None            
             
             loaded_models[property_name] = {
                 'model': model,
                 'scaler': scaler,
-                'path': str(model_file)
+                'path': str(model_file),
+                'metrics': metrics,
+                'architecture': arch_type,
+                'input_size': input_size
             }
             
-            print(f"✓ Loaded model for: {property_name}")
+            r2 = metrics.get('r2', 0)
+            mae = metrics.get('mae', 0)
+            print(f"✓ Loaded {arch_type:8s} model for {property_name:25s} (R²={r2:.3f}, MAE={mae:.3f})")
             
         except Exception as e:
             print(f"✗ Failed to load {model_file.name}: {e}")
+            import traceback
+            traceback.print_exc()
     
     return loaded_models
 
