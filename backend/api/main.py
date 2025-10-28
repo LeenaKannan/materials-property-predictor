@@ -13,6 +13,17 @@ import joblib
 
 from backend.services.prediction_service import PredictionService
 from backend.processors.feature_engineer import MaterialsFeatureEngineer
+from backend.api.models import (
+    PredictionRequest,
+    BatchPredictionRequest,
+    PredictionResponse,
+    PropertyPrediction,      
+    FeatureImportance,       
+    MultiPropertyResponse,
+    HealthResponse,
+    ModelInfoResponse,
+    ErrorResponse
+)
 from pymatgen.core.composition import Composition
 import time
 
