@@ -11,6 +11,11 @@ import torch.nn as nn
 import pickle
 import joblib
 
+from backend.services.prediction_service import PredictionService
+from backend.processors.feature_engineer import MaterialsFeatureEngineer
+from pymatgen.core.composition import Composition
+import time
+
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -316,16 +321,48 @@ async def predict(request: PredictionRequest):
             model_data = model_registry[property_name]
             model = model_data['model']
             scaler = model_data['scaler']
-            
-            # TODO: Implement actual prediction logic here
-            # This is a placeholder response
+        
+            # Create feature engineer and service
+            feature_engineer = MaterialsFeatureEngineer()
+            service = PredictionService(
+                model=model,
+                preprocessor=scaler,
+                feature_engineer=feature_engineer,
+                property_name=property_name
+            )
+
+            # Make prediction
+            start_time = time.time()
+            result = service.predict(
+                request.formula,
+                include_uncertainty=request.include_uncertainty,
+                include_explanation=request.include_explanation
+            )
+            processing_time = time.time() - start_time
+
+            # Check success
+            if not result.get("success"):
+                raise HTTPException(status_code=400, detail=result.get("error"))
+
+            # Get composition
+            comp = Composition(request.formula)
+            composition_dict = {str(el): float(amt) for el, amt in comp.fractional_composition.items()}
+
+            # Return proper response
+            pred_data = result["prediction"]
             return PredictionResponse(
                 success=True,
                 formula=request.formula,
-                normalized_formula=request.formula,
-                prediction=None,
-                composition=None,
-                processing_time=0.1,
+                normalized_formula=comp.reduced_formula,
+                prediction=PropertyPrediction(
+                    property_name=property_name,
+                    value=pred_data["value"],
+                    units=pred_data.get("units", ""),
+                    uncertainty=pred_data.get("uncertainty"),
+                    confidence_interval=pred_data.get("confidence_interval")
+                ),
+                composition=composition_dict,
+                processing_time=processing_time,
                 error=None
             )
         
